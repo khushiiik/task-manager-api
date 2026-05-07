@@ -15,3 +15,6 @@ class User(AbstractUser):
     team = models.ForeignKey(
         Team, on_delete=models.SET_NULL, null=True, blank=True, related_name="members"
     )
+
+    def __str__(self):
+        return f"{self.username} - {self.get_role_display()}"

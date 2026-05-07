@@ -9,8 +9,12 @@ class TaskPermission(BasePermission):
         # Read-only access for authenticated users.
         if request.method in SAFE_METHODS:
             return request.user.is_authenticated
+        
+        # User must belong to a team.
+        if not request.user.team and not request.user.role in [User.Role.ADMIN]:
+            return False
 
-        # DELETE permission
+        # DELETE permission.
         if request.method == "DELETE":
             return request.user.role in [
                 User.Role.ADMIN,

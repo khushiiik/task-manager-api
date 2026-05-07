@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "teams",
     "tasks",
     "rest_framework",
+    "notifications.apps.NotificationsConfig",
 ]
 
 REST_FRAMEWORK = {
@@ -139,3 +140,6 @@ STATIC_URL = "static/"
 
 # Custom User Model.
 AUTH_USER_MODEL = "accounts.User"
+
+# Celery
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
