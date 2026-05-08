@@ -1,5 +1,8 @@
+from django.db.models import Q
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from tasks.filters import TaskFilter
 from tasks.permissions import TaskPermission
 from tasks.serializers import TaskSerializer
 from tasks.models import Task
@@ -10,6 +13,8 @@ class TasksViewSet(ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated, TaskPermission]
     queryset = Task.objects.all()
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = TaskFilter
 
     def get_queryset(self):
         user = self.request.user
@@ -18,8 +23,17 @@ class TasksViewSet(ModelViewSet):
         if user.role == user.Role.ADMIN:
             return Task.objects.all()
 
-        # Visible only team tasks.
-        return Task.objects.filter(project__team=user.team)
+        # Manager can view all team tasks, including inactive project tasks.
+        if user.role == user.Role.MANAGER:
+            return Task.objects.filter(
+                Q(project__team=user.team) | Q(assigned_to=user)
+            ).distinct()
+
+        # Team members can only view tasks from active projects.
+        return Task.objects.filter(
+            Q(project__team=user.team) | Q(assigned_to=user),
+            project__is_active=True
+        ).distinct()
 
     def perform_create(self, serializer):
         """Automatically assign the current user as creator and initial updater."""
@@ -30,8 +44,7 @@ class TasksViewSet(ModelViewSet):
 
         if task.assigned_to:
             create_notification.delay(
-                task.assigned_to.id,
-                f"You were assigned task: {task.title}"
+                task.assigned_to.id, f"You were assigned task: {task.title}"
             )
 
     def perform_update(self, serializer):
@@ -42,6 +55,5 @@ class TasksViewSet(ModelViewSet):
         if task.assigned_to:
 
             create_notification.delay(
-                task.assigned_to.id,
-                f"You were assigned task: {task.title}"
+                task.assigned_to.id, f"You were assigned task: {task.title}"
             )

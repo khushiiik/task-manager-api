@@ -1,64 +1,94 @@
 from rest_framework import serializers
+from rest_framework.response import Response
 from accounts.models import User
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = User
-        fields = ["username", "password", "email", "role", "team"]
+        fields = [
+            "id",
+            "username",
+            "password",
+            "email",
+            "role",
+            "team",
+        ]
 
     def validate(self, attrs):
+
         role = attrs.get("role", User.Role.DEVELOPER)
         team = attrs.get("team")
 
-        if role == User.Role.ADMIN:
-            raise serializers.ValidationError("Cannot register as admin.")
+        # Admin cannot belong to team.
+        if role == User.Role.ADMIN and team:
+            raise serializers.ValidationError("Admin cannot be assigned to a team.")
 
+        # Only one manager and QA per team.
         if role in [User.Role.MANAGER, User.Role.QA] and team:
-            exist = User.objects.filter(team=team, role=role).exists()
 
-            if exist:
+            queryset = User.objects.filter(role=role, team=team)
+
+            # exclude self on update.
+            if self.instance:
+                queryset = queryset.exclude(id=self.instance.id)
+
+            if queryset.exists():
                 raise serializers.ValidationError(f"{role} already exists in the team.")
 
         return attrs
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data["username"],
-            password=validated_data["password"],
-            email=validated_data.get("email"),
-            role=validated_data.get("role", User.Role.DEVELOPER),
-            team=validated_data.get("team"),
-        )
+        password = validated_data.pop("password")
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
+
         return user
 
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
 
-class UserUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ["role", "team"]
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
 
-    def validate(self, attrs):
-        role = attrs.get("role", self.instance.role)
-        team = attrs.get("team", self.instance.team)
+        if password:
+            instance.set_password(password)
 
-        if role in [User.Role.MANAGER, User.Role.QA] and team:
-            exists = (
-                User.objects.filter(team=team, role=role)
-                .exclude(id=self.instance.id)
-                .exists()
-            )
-            if exists:
-                raise serializers.ValidationError(
-                    f"{role} already exists in this team."
-                )
+        instance.save()
 
-        return attrs
+        return instance
 
 
 class UserSerializer(serializers.ModelSerializer):
+
+    team_name = serializers.CharField(source="team.name", read_only=True)
+
     class Meta:
         model = User
-        fields = ["id", "username", "email", "role", "team"]
+        fields = ["id", "username", "email", "role", "team_name"]
+        read_only_fields = ["username", "role"]
+
+class ChangePasswordSerializer(serializers.Serializer):
+
+    old_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True)
+
+    def validate(self, attrs):
+
+        user = self.context["request"].user
+
+        if not user.check_password(attrs["old_password"]):
+            raise serializers.ValidationError("Old password is incorrect.")
+
+        return attrs
+
+    def update(self, instance, validated_data):
+
+        instance.set_password(validated_data["new_password"])
+
+        instance.save()
+
+        return instance
