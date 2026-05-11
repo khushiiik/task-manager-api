@@ -5,4 +5,5 @@ from teams.models import Team
 class TeamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Team
-        fields = ["id", "name", "members"]
+        fields = ["id", "name"]
+        read_only_fields = ["members"]
