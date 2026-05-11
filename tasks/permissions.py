@@ -9,9 +9,9 @@ class TaskPermission(BasePermission):
         # Read-only access for authenticated users.
         if request.method in SAFE_METHODS:
             return request.user.is_authenticated
-        
+
         # User must belong to a team.
-        if not request.user.team and not request.user.role in [User.Role.ADMIN]:
+        if not request.user.team and request.user.role != User.Role.ADMIN:
             return False
 
         # DELETE permission.
@@ -27,3 +27,11 @@ class TaskPermission(BasePermission):
             User.Role.MANAGER,
             User.Role.DEVELOPER,
         ]
+
+
+class TaskReportPermission(BasePermission):
+
+    def has_permission(self, request, view):
+
+        # Only admin can access.
+        return request.user.role == User.Role.ADMIN
