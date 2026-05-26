@@ -49,7 +49,7 @@ services:
   celery:
     build: .
 
-    command: celery -A project worker -l info --pool=solo
+    command: celery -A config worker -l info --pool=solo
 
     volumes:
       - .:/app
