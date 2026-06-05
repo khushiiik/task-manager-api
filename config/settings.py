@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "projects",
     "teams",
     "tasks",
+    "chatbot"
 ]
 
 REST_FRAMEWORK = {
@@ -59,6 +60,8 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
     ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 10,
 }
 
 MIDDLEWARE = [
@@ -124,6 +127,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Redis Cache
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://redis:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
@@ -147,3 +160,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 # Celery
 CELERY_BROKER_URL = "redis://redis:6379/0"
+
+# Gemini api key
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+

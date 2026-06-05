@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from projects.serializers import ProjectSerializer
 from projects.permissions import ProjectPermission
 from projects.models import Project
+from accounts.models import User
 
 
 class ProjectViewSet(ModelViewSet):
@@ -23,27 +24,36 @@ class ProjectViewSet(ModelViewSet):
     def perform_create(self, serializer):
         """Automatically assign the current user as creator and initial updater."""
 
-        serializer.save(created_by=self.request.user, last_updated_by=self.request.user)
+        project = serializer.save(
+            created_by=self.request.user, last_updated_by=self.request.user
+        )
+
+        self.invalidate_project_cache(project)
 
     def perform_update(self, serializer):
         """Automatically update the last_updated_by field with the current user."""
 
-        serializer.save(last_updated_by=self.request.user)
+        old_team_id = self.get_object().team_id
 
-    def list(self, request, *args, **kwargs):
-        """Retrieve and cache project list separately for each user
-        to improve performance while maintaining role-based access."""
+        project = serializer.save(last_updated_by=self.request.user)
 
-        cache_key = f"project_{request.user.id}"
+        self.invalidate_project_cache(project, old_team_id)
 
-        cache_data = cache.get(cache_key)
+    def perform_destroy(self, instance):
+        self.invalidate_project_cache(instance)
 
-        if cache_data:
-            return Response(cache_data)
+        instance.delete()
 
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+    def bump_version(self, key):
+        try:
+            cache.incr(key)
+        except ValueError:
+            cache.set(key, 1, None)
 
-        cache.set(cache_key, serializer.data, timeout=60)
+    def invalidate_project_cache(self, project, old_team_id=None):
+        self.bump_version("admin_projects_version")
 
-        return Response(serializer.data)
+        self.bump_version(f"team_projects_{project.team_id}_version")
+
+        if old_team_id and old_team_id != project.team_id:
+            self.bump_version(f"team_projects_{old_team_id}_version")
