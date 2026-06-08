@@ -148,6 +148,14 @@ def run_document_agent(prompt: str, session_id: str) -> str:
 
     context = "\n---\n".join(context_chunks)
 
+    rag_prompt = (
+        "You are an AI document assistant. Answer the user's query using the following retrieved document context. "
+        "Format your response cleanly using markdown. If you do not know the answer or the context does not contain enough information, "
+        "politely say that you cannot find the answer in the document.\n\n"
+        f"CONTEXT:\n{context}\n\n"
+        f"USER QUERY: {prompt}"
+    )
+
     # Fetch previous messages for the session to form conversational history
     history = []
     from chatbot.models.chat_message import ChatMessage
