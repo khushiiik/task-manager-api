@@ -82,7 +82,7 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
                 response_text = f"Error executing Document Agent: {str(e)}"
         else:
             try:
-                response_text = run_db_agent(user_content, request.user.id)
+                response_text = run_db_agent(user_content, request.user.id, session_id=session.id)
             except Exception as e:
                 response_text = f"Error executing DB Agent: {str(e)}"
 

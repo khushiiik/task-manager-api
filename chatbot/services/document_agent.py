@@ -148,14 +148,16 @@ def run_document_agent(prompt: str, session_id: str) -> str:
 
     context = "\n---\n".join(context_chunks)
 
-    # 5. Call LLM with RAG Prompt
-    rag_prompt = (
-        "You are an assistant answering questions based ONLY on the provided document contexts. "
-        "If the answer cannot be found in the context, politely state that you do not know. "
-        "Do not make up facts outside the provided documents.\n\n"
-        f"DOCUMENT CONTEXT:\n{context}\n\n"
-        f"USER QUESTION: {prompt}\n\n"
-        "ANSWER:"
-    )
+    # Fetch previous messages for the session to form conversational history
+    history = []
+    from chatbot.models.chat_message import ChatMessage
+    messages = ChatMessage.objects.filter(session_id=session_id).order_by("id")
+    if messages.count() > 1:
+        for msg in list(messages)[:-1]:  # exclude the last message, which is the current prompt
+            if "Error executing Groq" in msg.content or "<function=" in msg.content:
+                continue
+            m_role = "user" if msg.role == ChatMessage.Role.USER else "model"
+            history.append({"role": m_role, "parts": [msg.content]})
 
-    return generate_response(rag_prompt)
+    return generate_response(rag_prompt, history=history)
+

@@ -164,3 +164,7 @@ CELERY_BROKER_URL = "redis://redis:6379/0"
 # Gemini api key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+# Groq api key
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+

@@ -3,8 +3,14 @@ from django.db import connection
 from projects.models import Project
 from tasks.models import Task
 from teams.models import Team
+from chatbot.models.chat_message import ChatMessage
 from accounts.models import User
 from .llm_service import chat_with_tools
+from notifications.tasks import create_notification
+from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_datetime
+from django.utils import timezone
+from datetime import datetime
 
 
 def execute_read_only_sql(sql_query: str, user_id: int) -> dict:
@@ -40,9 +46,7 @@ def execute_read_only_sql(sql_query: str, user_id: int) -> dict:
     # 2. Scope checks based on Role and Team
     user_team = user.team
     if user.role != "admin" and not user_team:
-        return {
-            "error": "Permission Denied: Users without teams cannot query data."
-        }
+        return {"error": "Permission Denied: Users without teams cannot query data."}
 
     # Run the query
     try:
@@ -59,9 +63,8 @@ def execute_read_only_sql(sql_query: str, user_id: int) -> dict:
             for row in results:
                 # Retrieve and validate any referenced entities in the row
                 # Let's check Project:
-                proj_id = (
-                    row.get("project_id")
-                    or (row.get("id") if "project" in clean_query.lower() else None)
+                proj_id = row.get("project_id") or (
+                    row.get("id") if "project" in clean_query.lower() else None
                 )
                 if proj_id and "project" in clean_query.lower():
                     try:
@@ -72,9 +75,8 @@ def execute_read_only_sql(sql_query: str, user_id: int) -> dict:
                         pass
 
                 # Let's check Task:
-                task_id = (
-                    row.get("task_id")
-                    or (row.get("id") if "task" in clean_query.lower() else None)
+                task_id = row.get("task_id") or (
+                    row.get("id") if "task" in clean_query.lower() else None
                 )
                 if task_id and "task" in clean_query.lower():
                     try:
@@ -89,9 +91,8 @@ def execute_read_only_sql(sql_query: str, user_id: int) -> dict:
                         pass
 
                 # Let's check User:
-                usr_id = (
-                    row.get("user_id")
-                    or (row.get("id") if "user" in clean_query.lower() else None)
+                usr_id = row.get("user_id") or (
+                    row.get("id") if "user" in clean_query.lower() else None
                 )
                 if usr_id and "user" in clean_query.lower():
                     try:
@@ -107,6 +108,7 @@ def execute_read_only_sql(sql_query: str, user_id: int) -> dict:
         # Clean results for JSON serialization (convert datetimes, dates, UUIDs to string)
         import datetime
         import uuid
+
         cleaned_results = []
         for row in results:
             cleaned_row = {}
@@ -127,7 +129,7 @@ def execute_read_only_sql(sql_query: str, user_id: int) -> dict:
 
 def assign_task_tool(task_id: int, username: str, user_id: int) -> dict:
     """Assigns an existing task to a user.
-    Only admins and managers/developers (within their team) can assign tasks.
+    Only admins, managers, developers, and QAs (within their team) can assign tasks.
     """
     try:
         requesting_user = User.objects.get(id=user_id)
@@ -135,13 +137,11 @@ def assign_task_tool(task_id: int, username: str, user_id: int) -> dict:
         return {"error": "User not found."}
 
     # Validate permission role
-    if requesting_user.role not in ["admin", "manager", "developer"]:
+    if not requesting_user.role:
         return {"error": "Permission Denied: You cannot assign tasks."}
 
     if requesting_user.role != "admin" and not requesting_user.team:
-        return {
-            "error": "Permission Denied: Users without teams cannot manage tasks."
-        }
+        return {"error": "Permission Denied: Users without teams cannot manage tasks."}
 
     try:
         task = Task.objects.get(id=task_id)
@@ -168,14 +168,20 @@ def assign_task_tool(task_id: int, username: str, user_id: int) -> dict:
         if assignee.team != requesting_user.team:
             return {
                 "error": (
-                    "Permission Denied: Managers/Developers can only assign tasks "
-                    f"to members of their own team ({requesting_user.team.name})."
+                    "Permission Denied: You can only assign tasks "
+                    f"to members of your own team ({requesting_user.team.name})."
                 )
             }
 
+    old_assigned_to = task.assigned_to
     task.assigned_to = assignee
     task.last_updated_by = requesting_user
     task.save()
+
+    if old_assigned_to != assignee and assignee:
+        from notifications.tasks import create_notification
+
+        create_notification.delay(assignee.id, f"You were assigned task: {task.title}")
 
     return {
         "success": True,
@@ -204,16 +210,12 @@ def create_task_tool(
         return {"error": "Permission Denied: QA cannot create tasks."}
 
     if requesting_user.role != "admin" and not requesting_user.team:
-        return {
-            "error": "Permission Denied: Users without teams cannot create tasks."
-        }
+        return {"error": "Permission Denied: Users without teams cannot create tasks."}
 
     # Fetch project
     try:
         if requesting_user.role != "admin":
-            project = Project.objects.get(
-                name=project_name, team=requesting_user.team
-            )
+            project = Project.objects.get(name=project_name, team=requesting_user.team)
         else:
             project = Project.objects.get(name=project_name)
     except Project.DoesNotExist:
@@ -251,13 +253,8 @@ def create_task_tool(
     # Parse deadline
     parsed_deadline = None
     if deadline:
-        from django.utils.dateparse import parse_datetime
-
         parsed_deadline = parse_datetime(deadline)
         if not parsed_deadline:
-            from django.utils import timezone
-            from datetime import datetime
-
             for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
                 try:
                     parsed_deadline = timezone.make_aware(
@@ -277,6 +274,9 @@ def create_task_tool(
         created_by=requesting_user,
         last_updated_by=requesting_user,
     )
+
+    if assignee:
+        create_notification.delay(assignee.id, f"You were assigned task: {task.title}")
 
     return {
         "success": True,
@@ -311,7 +311,6 @@ def create_project_tool(
     team = requesting_user.team if requesting_user.role == "manager" else None
 
     # Parse dates
-    from django.utils.dateparse import parse_date
 
     p_start_date = parse_date(start_date) if start_date else None
     p_end_date = parse_date(end_date) if end_date else None
@@ -336,7 +335,7 @@ def create_project_tool(
     }
 
 
-def run_db_agent(prompt: str, user_id: int) -> str:
+def run_db_agent(prompt: str, user_id: int, session_id: str = None) -> str:
     """Run the DB Agent using SQL execution and write tools, enforcing strict permissions and confirmations."""
     try:
         user = User.objects.get(id=user_id)
@@ -345,6 +344,19 @@ def run_db_agent(prompt: str, user_id: int) -> str:
         team_id = user.team.id if user.team else "None"
     except User.DoesNotExist:
         return "Error: User context not found."
+
+    # Fetch previous messages for the session to form conversational history
+    history = []
+    if session_id:
+        from chatbot.models.chat_message import ChatMessage
+
+        messages = ChatMessage.objects.filter(session_id=session_id).order_by("id")
+        if messages.count() > 1:
+            for msg in list(messages)[:-1]:  # exclude the last message, which is the current prompt
+                if "Error executing Groq" in msg.content or "<function=" in msg.content:
+                    continue
+                m_role = "user" if msg.role == ChatMessage.Role.USER else "model"
+                history.append({"role": m_role, "parts": [msg.content]})
 
     system_instruction = (
         "You are an AI database assistant for a Task Manager application. "
@@ -357,6 +369,7 @@ def run_db_agent(prompt: str, user_id: int) -> str:
         "- `teams_team`: contains fields id, name, created_at, updated_at.\n"
         "- `accounts_user`: contains fields id, username, email, role (admin/manager/developer/qa), team_id.\n\n"
         "STRICT SECURITY & UI RULES:\n"
+        "0. CRITICAL TOOL CALLING RULE: When you decide to invoke a tool, you MUST ONLY output the native tool call using the tools parameter. Do NOT generate any conversational text, thoughts, reasoning, markdown blocks, or custom XML tags in the same turn. Speak to the user only in conversational turns where you do not call tools.\n"
         "1. NEVER output database IDs (project, team, user, or task IDs) in the chat response. Always display names, titles, or usernames instead.\n"
         "2. READ queries: Use the `execute_read_only_sql` tool to fetch data. Admin can view everything. Managers, Developers, and QA can only view "
         "data within their team, plus tasks from other teams assigned to them. (The backend tool will automatically filter out rows violating this, "
@@ -367,9 +380,12 @@ def run_db_agent(prompt: str, user_id: int) -> str:
         "and request the user's explicit confirmation in the chat. For example:\n"
         "   'I am about to create a task: [title], assigned to: [username], belonging to team: [team_name], related to project: [project_name]. Please confirm these changes.'\n"
         "   Do NOT invoke the tool function until the user responds with 'yes', 'confirm', or equivalent agreement.\n"
+        "   When the user confirms (e.g., says 'yes', 'confirm', or 'proceed'), you MUST call the write tool using the exact parameters (such as project_name, title, assigned_to_username, etc.) specified in your previous confirmation message or in the original prompt. DO NOT invent or substitute parameters (do not change 'Project Alpha 1' to other names like 'Website Redesign' or 'Home tasks').\n"
         "5. PROJECT/TASK CREATION WORKFLOW: Only Admins and Managers can create projects. Managers/Developers/Admins can create tasks. QAs cannot create either. "
-        "When a user asks to create a task, check if the project exists in their team. If not, ask the user if they'd like to create the project first. "
-        "Ask the user ONLY for the mandatory details (e.g. project name) and check if they need to add optional details (like assignee, deadline). If they say 'No', proceed with defaults."
+        "When a user asks to create a task, you MUST first run a SELECT query using the 'execute_read_only_sql' tool (e.g., on `projects_project` and `teams_team` tables) to check if the project exists. If it exists, retrieve its team and use that team's name in your confirmation message. If the project does not exist, ask the user if they'd like to create the project first. "
+        "Ask the user ONLY for the mandatory details (e.g. project name) and check if they need to add optional details (like assignee, deadline). If they say 'No', proceed with defaults.\n"
+        "   Before proposing to create a new project or team, you MUST first query the database using 'execute_read_only_sql' (e.g. checking `projects_project` or `teams_team` tables) to check if a project or team with that name already exists. If it already exists, DO NOT ask to create it; instead, use/associate the existing project or team and inform the user that it already exists.\n"
+        "6. TASK ASSIGNMENT LOOKUP: The `assign_task_tool` takes an integer `task_id`. You MUST never pass a task title string (like 'XYZ_123_ABC') directly to this parameter. When a user asks to assign a task by its name/title, you MUST first query the database using 'execute_read_only_sql' to find the task's integer ID, and then pass that integer ID as `task_id` when calling `assign_task_tool`.\n"
     )
 
     tools = [
@@ -378,4 +394,6 @@ def run_db_agent(prompt: str, user_id: int) -> str:
         create_task_tool,
         create_project_tool,
     ]
-    return chat_with_tools(prompt, tools, system_instruction=system_instruction)
+    return chat_with_tools(
+        prompt, tools, system_instruction=system_instruction, history=history
+    )

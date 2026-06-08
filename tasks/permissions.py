@@ -21,11 +21,20 @@ class TaskPermission(BasePermission):
                 User.Role.MANAGER,
             ]
 
-        # CREATE / UPDATE permission.
+        # CREATE permission.
+        if request.method == "POST":
+            return request.user.role in [
+                User.Role.ADMIN,
+                User.Role.MANAGER,
+                User.Role.DEVELOPER,
+            ]
+
+        # UPDATE permission.
         return request.user.role in [
             User.Role.ADMIN,
             User.Role.MANAGER,
             User.Role.DEVELOPER,
+            User.Role.QA,
         ]
 
 
