@@ -202,6 +202,30 @@ export default function App() {
     }
   };
 
+  // Delete session trigger
+  const handleDeleteSession = async (sessionId) => {
+    if (!window.confirm("Are you sure you want to delete this chat session?")) return;
+
+    try {
+      const res = await authFetch(`/api/chatbot/sessions/${sessionId}/`, {
+        method: 'DELETE',
+      });
+
+      if (res && res.ok) {
+        // Remove from local list state
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        if (activeSessionId === sessionId) {
+          setActiveSessionId(null);
+          setActiveSession(null);
+        }
+      } else {
+        throw new Error('Failed to delete chat session.');
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   // Upload attachment file trigger
   const handleUploadFile = async (file, sessionId = activeSessionId) => {
     if (!sessionId) return;
@@ -298,7 +322,7 @@ export default function App() {
   }
 
   if (!userProfile) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return <Login onLoginSuccess={handleLoginSuccess} theme={theme} />;
   }
 
   return (
@@ -308,6 +332,7 @@ export default function App() {
         activeSessionId={activeSessionId}
         onSessionSelect={setActiveSessionId}
         onNewChatClick={() => setActiveSessionId(null)}
+        onDeleteSession={handleDeleteSession}
         userProfile={userProfile}
         onLogout={handleLogout}
         theme={theme}

@@ -141,6 +141,21 @@ body, html, #root {
   background-color: var(--bg-hover);
 }
 
+.delete-session-btn {
+  opacity: 0;
+  transition: opacity 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+.conversation-item:hover .delete-session-btn,
+.conversation-item.active .delete-session-btn {
+  opacity: 1;
+}
+
+.delete-session-btn:hover {
+  color: #ea4335 !important;
+  background-color: var(--bg-primary) !important;
+}
+
 .conversation-title {
   font-size: 14px;
   white-space: nowrap;

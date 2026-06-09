@@ -1,11 +1,12 @@
 import React from 'react';
-import { Plus, MessageSquare, LogOut, Sun, Moon, Sparkles } from 'lucide-react';
+import { Plus, MessageSquare, LogOut, Sun, Moon, Sparkles, Trash2 } from 'lucide-react';
 
 export default function Sidebar({
   sessions,
   activeSessionId,
   onSessionSelect,
   onNewChatClick,
+  onDeleteSession,
   userProfile,
   onLogout,
   theme,
@@ -33,11 +34,36 @@ export default function Sidebar({
               key={session.id}
               className={`conversation-item ${activeSessionId === session.id ? 'active' : ''}`}
               onClick={() => onSessionSelect(session.id)}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
             >
-              <MessageSquare size={16} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-              <span className="conversation-title">
-                {session.title || 'Untitled Conversation'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, overflow: 'hidden', flex: 1 }}>
+                <MessageSquare size={16} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+                <span className="conversation-title">
+                  {session.title || 'Untitled Conversation'}
+                </span>
+              </div>
+              <button
+                className="delete-session-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteSession(session.id);
+                }}
+                title="Delete Chat"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 4,
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           ))
         )}

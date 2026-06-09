@@ -19,5 +19,8 @@ class ChatMessage(models.Model):
     content = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["timestamp", "id"]
+
     def __str__(self):
         return f"{self.session.id} - {self.role}: {self.content[:30]}"

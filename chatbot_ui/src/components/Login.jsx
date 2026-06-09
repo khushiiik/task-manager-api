@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Bot } from 'lucide-react';
 
-export default function Login({ onLoginSuccess }) {
+export default function Login({ onLoginSuccess, theme }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,7 +46,7 @@ export default function Login({ onLoginSuccess }) {
   };
 
   return (
-    <div className="login-container">
+    <div className={`login-container ${theme || 'dark'}-theme`}>
       <div className="login-card">
         <div className="login-header">
           <div className="login-logo">

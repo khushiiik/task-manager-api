@@ -250,6 +250,15 @@ def create_task_tool(
         except User.DoesNotExist:
             return {"error": f"User with username='{assigned_to_username}' not found."}
 
+    # Check if task already exists in this project
+    existing_task = Task.objects.filter(title=title, project=project).first()
+    if existing_task:
+        return {
+            "success": True,
+            "message": f"Task '{existing_task.title}' already exists in project '{project.name}'.",
+            "task_id": existing_task.id,
+        }
+
     # Parse deadline
     parsed_deadline = None
     if deadline:
@@ -286,7 +295,11 @@ def create_task_tool(
 
 
 def create_project_tool(
-    name: str, start_date: str = None, end_date: str = None, user_id: int = None
+    name: str,
+    team_name: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    user_id: int = None,
 ) -> dict:
     """Creates a new project.
     Only admins and managers can create projects.
@@ -308,10 +321,35 @@ def create_project_tool(
             "error": "Permission Denied: Managers without teams cannot create projects."
         }
 
-    team = requesting_user.team if requesting_user.role == "manager" else None
+    # Determine team
+    team = None
+    if requesting_user.role == "manager":
+        team = requesting_user.team
+        if team_name and team_name.lower() != team.name.lower():
+            return {
+                "error": f"Permission Denied: Managers can only create projects for their own team ({team.name})."
+            }
+    elif requesting_user.role == "admin" and team_name:
+        try:
+            team = Team.objects.get(name__iexact=team_name)
+        except Team.DoesNotExist:
+            return {"error": f"Team '{team_name}' not found."}
+
+    # Check if project already exists
+    existing_project = None
+    if team:
+        existing_project = Project.objects.filter(name=name, team=team).first()
+    else:
+        existing_project = Project.objects.filter(name=name, team__isnull=True).first()
+
+    if existing_project:
+        return {
+            "success": True,
+            "message": f"Project '{existing_project.name}' already exists.",
+            "project_id": existing_project.id,
+        }
 
     # Parse dates
-
     p_start_date = parse_date(start_date) if start_date else None
     p_end_date = parse_date(end_date) if end_date else None
 

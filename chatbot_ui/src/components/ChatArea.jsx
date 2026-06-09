@@ -14,6 +14,7 @@ export default function ChatArea({
 }) {
   const [inputText, setInputText] = useState('');
   const [streamedText, setStreamedText] = useState('');
+  const [streamingIndex, setStreamingIndex] = useState(-1);
   const lastStreamedIndexRef = useRef(-1);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -26,6 +27,17 @@ export default function ChatArea({
   ];
 
   const messages = activeSession ? activeSession.messages || [] : [];
+
+  // Reset streaming state when active session changes (prevents streaming old history)
+  useEffect(() => {
+    if (activeSession) {
+      lastStreamedIndexRef.current = (activeSession.messages || []).length - 1;
+    } else {
+      lastStreamedIndexRef.current = -1;
+    }
+    setStreamedText('');
+    setStreamingIndex(-1);
+  }, [activeSession?.id]);
 
   // Scroll to bottom whenever messages list changes or typing streams
   useEffect(() => {
@@ -41,6 +53,7 @@ export default function ChatArea({
         // If this is a newly received message (index different from last streamed), trigger typing
         if (lastStreamedIndexRef.current !== lastIdx) {
           lastStreamedIndexRef.current = lastIdx;
+          setStreamingIndex(lastIdx);
           setStreamedText('');
           
           const fullContent = lastMessage.content || '';
@@ -53,6 +66,7 @@ export default function ChatArea({
               setStreamedText(fullContent.substring(0, currentLength));
             } else {
               setStreamedText(fullContent);
+              setStreamingIndex(-1);
               clearInterval(timer);
             }
           }, 15);
@@ -63,6 +77,7 @@ export default function ChatArea({
     } else {
       lastStreamedIndexRef.current = -1;
       setStreamedText('');
+      setStreamingIndex(-1);
     }
   }, [messages.length, messages.length > 0 ? messages[messages.length - 1].content : '']);
 
@@ -149,8 +164,8 @@ export default function ChatArea({
         <div className="messages-container">
           {messages.map((msg, index) => {
             const isUser = msg.role === 'user';
-            const isLatestAssistant = !isUser && index === messages.length - 1;
-            const contentToDisplay = isLatestAssistant ? streamedText : msg.content;
+            const isStreamingThis = !isUser && index === streamingIndex;
+            const contentToDisplay = isStreamingThis ? streamedText : msg.content;
 
             return (
               <div key={msg.id || index} className={`message-wrapper ${isUser ? 'user' : 'assistant'}`}>
@@ -169,7 +184,7 @@ export default function ChatArea({
           })}
 
           {/* Sending/Loader status */}
-          {isSending && streamedText === '' && (
+          {isSending && streamingIndex === -1 && (
             <div className="message-wrapper assistant">
               <div className="message-avatar assistant">
                 <Bot size={18} />
