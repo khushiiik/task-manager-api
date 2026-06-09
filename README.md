@@ -6,23 +6,18 @@ This project simulates a real-world enterprise workflow where Admins, Managers, 
 
 ---
 
-# 📊 Architecture Diagram
-
-Below is the high-level architecture diagram showing the relationship between the React frontend, Django API service, PostgreSQL database, Redis broker, Celery worker, and the AI agent loop (Groq SDK + Llama 3.3/3.1 models).
+# 🏗️ System Architecture
 
 ```mermaid
 graph TD
-    Client["Chatbot UI (React SPA)"] <-->|REST API / JWT| Backend["Django API Service (Port 8000)"]
-    Backend <-->|SQL Queries / ORM| DB[("PostgreSQL DB")]
-    Backend <-->|Celery tasks / Caching| Redis[("Redis Broker & Cache")]
-    Redis <--> Celery["Celery Worker (Async Notifications)"]
-    
-    subgraph AI Chatbot Engine
-        Backend <-->|Retrieve Similarity Chunks| FAISS[("FAISS Vector Index (RAG)")]
-        Backend <-->|Completion & Tools| LLM["Groq SDK / Llama 3.3-70B & Llama 3.1-8B"]
-        LLM <-->|Tool Calls| Tools["DB Tools (Read SQL / Write Actions)"]
-        Tools <-->|Database Reads & Writes| DB
-    end
+    Client[React Chatbot UI] <-->|HTTP / JWT| Django[Django Web Server]
+    Django <-->|Read-Only SQL / Writes| Postgres[(PostgreSQL Database)]
+    Django <-->|Embeddings / FAISS| VectorDB[(FAISS Vector Database)]
+    Django <-->|Caching / Queue| Redis[(Redis Broker & Cache)]
+    Celery[Celery Async Workers] <-->|Trigger Notifications| Redis
+    Celery -->|DB Writes| Postgres
+    Django <-->|Tool Calling Loop| GroqAPI["Groq (Llama 3.1 8B / Llama 3.3 70B API)"]
+    Django -->|Embeddings| GeminiAPI["Gemini API (Embeddings model)"]
 ```
 
 ---
@@ -166,9 +161,9 @@ Create an Admin Superuser:
 docker compose exec web python manage.py createsuperuser
 ```
 
-*(Optional)* Seed initial team and tasks data:
+Seed initial teams, roles, users, projects, and tasks data:
 ```bash
-docker compose exec web python manage.py shell -c "from tasks.management.commands.seed_data import Command; Command().handle()"
+docker compose exec web python manage.py seed_data
 ```
 
 ### 4. Running the Chatbot UI Frontend
