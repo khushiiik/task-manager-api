@@ -1,310 +1,122 @@
-# Task Manager API
+# Task Manager API & AI Chatbot
 
-A production-style Task Management System built with **Django REST Framework (DRF)** featuring role-based workflows, team management, async notifications, Redis caching, Celery background tasks, Dockerized services, and PostgreSQL integration.
+A production-style Task Management System built with **Django REST Framework (DRF)** and integrated with a **React-based AI Chatbot Assistant** dashboard. It features role-based workflows, team-scoped security boundaries, async notification tasks (Celery + Redis), PostgreSQL integration, RAG document search, and SQL database tool calling.
 
-This project simulates a real-world company workflow where Admins, Managers, Developers, and QA members collaborate through projects and tasks.
-
----
-
-# 🚀 Features
-
-# 🔐 Authentication & User Management
-
-* JWT Authentication
-
-* Access & Refresh Token support
-
-* Custom User Model using `AbstractUser`
-
-* Role-based user system
-
-  * Admin
-  * Manager
-  * Developer
-  * QA
-
-* Admin-controlled user creation
-
-* Public registration is disabled
-
-* Admin provides username and temporary password to users
-
-* Users login using admin-provided credentials
-
-* Users can change their password after login
-
-* Users cannot change:
-
-  * role
-  * team
-  * username
-  * email
-
-* Secure password hashing
-
-* Password change endpoint
-
-* User profile endpoint
+This project simulates a real-world enterprise workflow where Admins, Managers, Developers, and QA members collaborate through projects, tasks, and an interactive AI assistant.
 
 ---
 
-# 🔔 Notification System
+# 📊 Architecture Diagram
 
-Async notification system using Celery + Redis.
+Below is the high-level architecture diagram showing the relationship between the React frontend, Django API service, PostgreSQL database, Redis broker, Celery worker, and the AI agent loop (Groq SDK + Llama 3.3/3.1 models).
 
-Notifications are automatically created when:
-
-* a task gets assigned
-* assignee changes
-
-The notification system also supports manual messaging between users.
-
-Users can:
-
-* send custom notification messages
-* select recipient users
-* request help or approvals
-* communicate workflow-related information
-
-Features:
-
-* User-specific notifications
-* Manual notification sending
-* Mark notification as read
-* Background task processing
-* Async notification delivery
-* Notifications trigger automatically when task assignments change
-
----
-
-# 👥 Team Management
-
-* Team creation and management
-* Team-member relationships
-* One Manager per team
-* One QA per team
-* Team-based project organization
-
----
-
-# 📁 Project Management
-
-* Project CRUD APIs
-* Active / Inactive project support
-* Team-based project ownership
-* Project creator tracking
-* Project update tracking
-* Start & end dates
-* Redis caching for project endpoints
-
-### Important Business Logic
-
-* Inactive project tasks are hidden from normal team members
-* Only Admins and Managers can access inactive project tasks
-
----
-
-# ✅ Task Management
-
-* Task CRUD APIs
-
-* Team-scoped task visibility
-
-* Cross-team task assignment (Admin-only)
-
-* Task states:
-
-  * Draft
-  * In Progress
-  * In Review
-  * Completed
-  * Blocked
-  * Cancelled
-
-* Task priority support
-
-* Due date support
-
-* Task creator tracking
-
-* Last updated by tracking
-
-* Admin users are excluded from task assignment
-
-* Validation prevents assigning tasks to Admin users
-
----
-
-# 🔍 Task Filtering
-
-Supports filtering tasks by:
-
-* State
-* Priority
-* Due date range
-* Assigned to current user
-
-### Example
-
-```bash id="sgbrgn"
-/tasks/?state=in_review
-/tasks/?priority=true
-/tasks/?assigned_to_me=true
-/tasks/?deadline_before=2026-05-20
+```mermaid
+graph TD
+    Client["Chatbot UI (React SPA)"] <-->|REST API / JWT| Backend["Django API Service (Port 8000)"]
+    Backend <-->|SQL Queries / ORM| DB[("PostgreSQL DB")]
+    Backend <-->|Celery tasks / Caching| Redis[("Redis Broker & Cache")]
+    Redis <--> Celery["Celery Worker (Async Notifications)"]
+    
+    subgraph AI Chatbot Engine
+        Backend <-->|Retrieve Similarity Chunks| FAISS[("FAISS Vector Index (RAG)")]
+        Backend <-->|Completion & Tools| LLM["Groq SDK / Llama 3.3-70B & Llama 3.1-8B"]
+        LLM <-->|Tool Calls| Tools["DB Tools (Read SQL / Write Actions)"]
+        Tools <-->|Database Reads & Writes| DB
+    end
 ```
 
 ---
 
-# ⚡ Async Processing with Celery
+# 🤖 AI Chatbot Assistant
 
-This project uses:
+The chatbot serves as an intelligent project planner, database query tool, and workflow coordinator. It is accessible securely through the client UI dashboard.
 
-* Celery
-* Redis
-
-for:
-
-* background notifications
-* async task processing
-
----
-
-# 📊 Reporting System
-
-Raw SQL reporting endpoint included.
-
-### Example Report
-
-* Overdue tasks per user
-
-Demonstrates:
-
-* SQL joins
-* grouping
-* aggregation
-* reporting queries
+### 🌟 Key Capabilities
+*   **Idempotency & Database Safety**: Protects the database from duplicate projects or tasks. The creation tools (`create_project_tool`, `create_task_tool`) scan the database first; if a project or task with the same name already exists in the scope, they return the existing record ID instead of creating duplicates.
+*   **Sequential Batch Action Flow**: The agent can handle compound instructions in a single turn. For example, you can request: *"Create a new project named 'Task Management Platform' for team alpha, and in it create tasks 1, 2, and 3."* The backend executes the project creation first, then links and creates all the tasks in a single confirmation turn.
+*   **Scoped SELECT Queries**: Team boundaries are strictly enforced. Developers and QAs can only query and view database columns/rows related to their own team projects or tasks assigned directly to them. Raw SQL writes, updates, or DDL commands are prohibited.
+*   **RAG (Retrieval-Augmented Generation)**: If documents (`.pdf`, `.docx`, `.txt`, `.md`) are uploaded in a session, the chatbot automatically indexes them using an in-memory **FAISS vector store**. The agent can query these documents to retrieve specifications and automatically propose/execute tasks based on the retrieved context.
+*   **Secure Backend Parameter Injection**: Confidential context parameters like `user_id` and `session_id` are stripped from LLM-facing schemas and injected on the backend by the server. This prevents validation errors and prevents the model from hallucinating or omitting user credentials.
+*   **Double Confirmation Requirement**: All write actions (creating projects, tasks, or assigning assignees) require explicit user confirmation (e.g. replying "yes" or "confirm") before execution.
+*   **Conversational Fallback**: If the tool calling loop ends on a tool execution message, the backend automatically performs a fallback conversational completion, ensuring the user always receives a friendly text summary and never raw JSON.
 
 ---
 
-# 🔒 Permissions & Security
+# 🚀 Core Features
 
-## Admin
+### 🔐 Authentication & User Management
+*   JWT Authentication (Access & Refresh tokens)
+*   Custom User Model using `AbstractUser`
+*   Role-based user permissions:
+    *   **Admin**: Total system control, user and team management, cross-team task assignment, reporting.
+    *   **Manager**: Project CRUD, task CRUD, team workflow management.
+    *   **Developer**: Create tasks, update task states, access assigned tasks. Barred from deleting tasks or creating projects.
+    *   **QA**: Review tasks, update task states. Barred from creating projects or tasks.
+*   Admin-controlled user creation (Public registration is disabled). Users change password on initial login.
 
-Can:
+### 🔔 Notification System
+*   Async notification system using **Celery** + **Redis**.
+*   Triggered automatically on task assignments or assignee changes.
+*   Supports manual message exchange between team members.
+*   Mark notifications as read/unread endpoints.
 
-* manage everything
-* manage users
-* manage teams
-* assign cross-team developers
-* access reports
+### 👥 Team Management
+*   Team creation and member scoping.
+*   Enforces business rules: Max one Manager and one QA per team.
+*   Team-based project ownership and access controls.
 
----
+### 📁 Project Management
+*   Project CRUD APIs with start/end date trackers.
+*   Support for Active / Inactive projects. Normal team members cannot view tasks belonging to inactive projects.
+*   Redis caching for project list endpoints.
 
-## Manager
-
-Can:
-
-* manage projects
-* manage tasks
-* manage own team workflow
-
-Cannot:
-
-* assign cross-team users
-
----
-
-## Developer
-
-Can:
-
-* create/update tasks
-* access assigned tasks
-
-Cannot:
-
-* delete tasks
-* manage projects
-
----
-
-## QA
-
-Can:
-
-* review tasks
-* access assigned review tasks
-
-Cannot:
-
-* create projects/tasks
-
----
-
-# 🧠 Business Rules
-
-* Admin users cannot belong to teams
-* Admin users cannot be assigned to tasks
-* Only one Manager and one QA allowed per team
-* Users without teams cannot manage tasks
-* Cross-team assignments are restricted to Admin
-* Team members only see relevant tasks
-* Developers can access cross-team tasks only if assigned
-
----
-
-# 🔄 Workflow Overview
-
-1. Admin creates teams and users
-2. Admin assigns roles and teams
-3. Managers create projects and tasks
-4. Developers work on assigned tasks
-5. QA reviews tasks marked as "In Review"
-6. Notifications trigger on assignment updates
-7. Reports provide overdue task analytics
+### ✅ Task Management
+*   Task CRUD APIs with priority toggles and due dates.
+*   Workflow states: *Draft, In Progress, In Review, Completed, Blocked, Cancelled*.
+*   Admin users are excluded from task assignments.
+*   Supports robust filtering by state, priority, assignee (`/tasks/?assigned_to_me=true`), and deadline ranges.
 
 ---
 
 # 🛠️ Tech Stack
 
-## Backend
-
-* Python
-* Django
-* Django REST Framework
-
-## Database
-
-* PostgreSQL
-
-## Async & Caching
-
-* Redis
-* Celery
-
-## Deployment & Containers
-
-* Docker
-* Docker Compose
+*   **Backend Framework**: Python / Django / Django REST Framework (DRF)
+*   **Frontend Dashboard**: React (Vite) / Vanilla CSS / Lucide Icons
+*   **Database**: PostgreSQL 16
+*   **Caching & Broker**: Redis 7
+*   **Background Tasks**: Celery
+*   **AI Service**: Groq SDK (`llama-3.3-70b-versatile` & `llama-3.1-8b-instant`) / Gemini API (`gemini-3.5-flash`)
+*   **Containerization**: Docker & Docker Compose
 
 ---
 
 # 🏗️ Project Structure
 
-```bash id="f4s2bn"
+```text
 TASK_MANAGER_API/
 │
-├── accounts/
-├── config/
-├── notifications/
-├── projects/
-├── tasks/
-├── teams/
+├── accounts/          # User authentication and custom profile views
+├── config/            # Django base configuration and urls
+├── chatbot/           # Chatbot API, FAISS index, and SQL tools agent
+├── notifications/     # Celery asynchronous notifications module
+├── projects/          # Projects models and serializers
+├── tasks/             # Tasks models, serializers, and permission logic
+├── teams/             # Teams models and serializers
 │
-├── .env
-├── .gitignore
-├── docker-compose.yml
-├── Dockerfile
+├── chatbot_ui/        # React (Vite) Chatbot Frontend Dashboard
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Login.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   ├── ChatArea.jsx
+│   │   │   └── Markdown.jsx
+│   │   ├── App.jsx
+│   │   └── index.css
+│   └── package.json
+│
+├── .env               # Environment variable configuration file
+├── docker-compose.yml # Docker multi-container services definition
+├── Dockerfile         # Docker recipe for Django API container
 ├── manage.py
 ├── README.md
 └── requirements.txt
@@ -312,219 +124,110 @@ TASK_MANAGER_API/
 
 ---
 
-# ⚙️ Local Installation
+# ⚙️ Setup & Installation Instructions
 
-```bash id="q9l1gk"
-git clone <repo_url>
+Follow these steps to run the complete stack (Django Backend, PostgreSQL, Redis, Celery, and React Chatbot UI).
 
-cd TASK_MANAGER_API
+### Prerequisites
+*   [Docker and Docker Compose](https://docs.docker.com/get-docker/) installed.
+*   [Node.js (v18+) and npm](https://nodejs.org/) installed (for local frontend development).
 
-pip install -r requirements.txt
-```
-
----
-
-# 🔐 Environment Variables
-
-Create a `.env` file:
-
-```env id="qklhn0"
+### 1. Environment Configuration
+Create a `.env` file in the root directory:
+```env
 DB_NAME=task_manager
 DB_USER=postgres
 DB_PASSWORD=postgres
 DB_HOST=db
 DB_PORT=5432
 
-SECRET_KEY=your_secret_key
-
+SECRET_KEY=your_django_secret_key_here
 DEBUG=True
+
+# AI Assistant API Keys (Required for chatbot functionality)
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
 ```
 
----
-
-# 🐳 Docker Setup
-
-## Run Project
-
-```bash id="p0pmou"
+### 2. Running Services with Docker Compose
+From the root directory, spin up the backend containers (Django web app, PostgreSQL, Redis, Celery worker):
+```bash
 docker compose up --build
 ```
 
----
-
-# Run Migrations
-
-```bash id="l3hbg5"
+### 3. Database Initial Setup (Migrations & Superuser)
+With the containers running, open a new terminal and run database migrations:
+```bash
 docker compose exec web python manage.py migrate
 ```
 
----
-
-# Create Superuser
-
-```bash id="6pq1zd"
+Create an Admin Superuser:
+```bash
 docker compose exec web python manage.py createsuperuser
 ```
 
----
-
-# Services Included
-
-* Django App
-* PostgreSQL
-* Redis
-* Celery Worker
-
----
-
-# 📘 API Documentation
-
-Browsable API available at:
-
-```bash id="jlwmft"
-http://127.0.0.1:8000/
+*(Optional)* Seed initial team and tasks data:
+```bash
+docker compose exec web python manage.py shell -c "from tasks.management.commands.seed_data import Command; Command().handle()"
 ```
 
----
-
-# 🔑 Authentication Flow
-
-## Login
-
-```bash id="mml1t4"
-POST /users/login/
+### 4. Running the Chatbot UI Frontend
+Open a separate terminal window and navigate to the frontend directory:
+```bash
+cd chatbot_ui
 ```
 
-Returns:
-
-* access token
-* refresh token
-
----
-
-# Refresh Token
-
-```bash id="9l7kz0"
-POST /users/token/refresh
+Install dependencies:
+```bash
+npm install
 ```
 
----
-
-# 👤 User Management Endpoints
-
-## Profile
-
-```bash id="c4p0vn"
-GET /users/profile/
+Start the Vite development server:
+```bash
+npm run dev
 ```
+The client dashboard will be available at `http://localhost:5173/`. 
+*Note: Vite is preconfigured to proxy `/api` endpoints to the backend container running at `http://localhost:8000/`.*
 
 ---
 
-# Change Password
+# 🔑 Core API Endpoints
 
-```bash id="1lfbxf"
-PATCH /users/profile/change-password/
-```
+### Authentication
+*   `POST /api/users/login/` - Returns JWT Access & Refresh tokens.
+*   `POST /api/users/token/refresh/` - Refreshes expired Access token.
+*   `GET /api/users/profile/` - Fetch profile details.
+*   `PATCH /api/users/profile/change-password/` - Update profile password.
 
----
+### Chatbot Engine
+*   `GET /api/chatbot/sessions/` - List active user chat sessions.
+*   `POST /api/chatbot/sessions/` - Create a new chat session.
+*   `DELETE /api/chatbot/sessions/<uuid>/` - Deletes a chat session.
+*   `POST /api/chatbot/sessions/<uuid>/message/` - Send a message to the agent.
+*   `POST /api/chatbot/sessions/<uuid>/attachments/` - Upload PDF/DOCX/TXT/MD files to index.
 
-# Admin User Management
-
-```bash id="sbo9w7"
-GET     /users/
-POST    /users/
-GET     /users/<id>/
-PATCH   /users/<id>/
-DELETE  /users/<id>/
-```
-
----
-
-# 👥 Team Endpoints
-
-```bash id="lsm4g1"
-GET     /teams/
-POST    /teams/
-PATCH   /teams/<id>/
-DELETE  /teams/<id>/
-```
+### Tasks & Projects
+*   `GET/POST /api/projects/` - Manage team projects.
+*   `GET/POST /api/tasks/` - Manage tasks (supports `?assigned_to_me=true`, `?state=in_review`, etc.).
+*   `GET /api/tasks/reports/overdue/` - Raw SQL report of overdue tasks (Admin only).
 
 ---
 
-# 📁 Project Endpoints
-
-```bash id="4n6g3s"
-GET     /projects/
-POST    /projects/
-PATCH   /projects/<id>/
-DELETE  /projects/<id>/
-```
-
----
-
-# ✅ Task Endpoints
-
-```bash id="0az2eh"
-GET     /tasks/
-POST    /tasks/
-PATCH   /tasks/<id>/
-DELETE  /tasks/<id>/
-```
-
----
-
-# 🔔 Notification Endpoints
-
-```bash id="qcrxjd"
-GET     /notifications/
-POST    /notifications/
-```
-
----
-
-# 📊 Report Endpoint
-
-```bash id="rx59q4"
-GET /tasks/reports/overdue/
-```
-
----
-
-# 🚀 Future Improvements
-
-* Email notifications
-* WebSocket realtime updates
-* Task comments
-* File attachments
-* Activity logs
-* Soft delete support
-* Advanced analytics dashboard
-
----
-
-# 🎯 Purpose of This Project
-
-This project was built to practice and demonstrate:
-
-* production-style backend architecture
-* DRF workflows
-* role-based permissions
-* async processing
-* Redis caching
-* Dockerized services
-* raw SQL reporting
-* scalable API design
+# 🚀 Future Roadmap
+*   Email notifications on Celery scheduler.
+*   WebSockets integration for real-time notification alerts.
+*   Task comment streams and attachment uploads.
+*   Full activity audit log history.
 
 ---
 
 # 📄 License
 
-This project is for educational purposes.
+This project is for educational and pair-programming practice purposes.
 
 ---
 
 # 👨‍💻 Author
 
-Khushi Koriya
-
-GitHub: [https://github.com/khushiiik]
+Khushi Koriya  
+GitHub: [https://github.com/khushiiik](https://github.com/khushiiik)
